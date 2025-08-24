@@ -19,6 +19,8 @@ type Props = {
   onPrice?: (price: number) => void;
 };
 
+type TimePeriod = "1h" | "24h" | "7D" | "1M" | "3M" | "1Y";
+
 type CandleData = {
   time: UTCTimestamp;
   open: number;
@@ -27,20 +29,21 @@ type CandleData = {
   close: number;
 };
 
-interface BinanceKline {
-  openTime: number;
-  open: string;
-  high: string;
-  low: string;
-  close: string;
-  volume: string;
-  closeTime: number;
-  quoteAssetVolume: string;
-  numberOfTrades: number;
-  takerBuyBaseAssetVolume: string;
-  takerBuyQuoteAssetVolume: string;
-  ignore: string;
-}
+// Binance API returns klines as arrays, not objects
+type BinanceKline = [
+  number, // openTime
+  string, // open
+  string, // high
+  string, // low
+  string, // close
+  string, // volume
+  number, // closeTime
+  string, // quoteAssetVolume
+  number, // numberOfTrades
+  string, // takerBuyBaseAssetVolume
+  string, // takerBuyQuoteAssetVolume
+  string  // ignore
+];
 
 interface BinanceKlineWebSocket {
   e: string; // Event type
@@ -71,11 +74,26 @@ const clamp = (v: number, min: number, max: number) => Math.max(min, Math.min(ma
 
 // Helper functions
 const normalizeCandle = (kline: BinanceKline): CandleData | null => {
-  const time = Math.floor(kline.openTime / 1000) as UTCTimestamp;
-  const open = parseFloat(kline.open);
-  const high = parseFloat(kline.high);
-  const low = parseFloat(kline.low);
-  const close = parseFloat(kline.close);
+  const openTime = kline[0];
+  const open = parseFloat(kline[1]);
+  const high = parseFloat(kline[2]);
+  const low = parseFloat(kline[3]);
+  const close = parseFloat(kline[4]);
+  
+  const time = Math.floor(openTime / 1000) as UTCTimestamp;
+  
+  // Debug the first few items to see what's happening
+  if (Math.random() < 0.1) { // Only log 10% of items to avoid spam
+    console.log('Normalizing candle:', {
+      openTime,
+      time,
+      open,
+      high,
+      low,
+      close,
+      isValid: isFinite(open) && isFinite(high) && isFinite(low) && isFinite(close) && time > 0
+    });
+  }
   
   if (!isFinite(open) || !isFinite(high) || !isFinite(low) || !isFinite(close) || time <= 0) {
     return null;
@@ -101,22 +119,31 @@ const normalizeWebSocketCandle = (kline: BinanceKlineWebSocket['k']): CandleData
 const fetchHistory = async (
   symbol: string,
   startTime: number,
-  endTime: number
+  endTime: number,
+  interval: string = "1m"
 ): Promise<CandleData[]> => {
-  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=1m&startTime=${startTime}&endTime=${endTime}&limit=1000`;
-  
-  console.log('Fetching history:', new Date(startTime), 'to', new Date(endTime));
+  const url = `https://api.binance.com/api/v3/klines?symbol=${symbol.toUpperCase()}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=1000`;
+
+  console.log('Fetching from URL:', url);
   
   try {
     const response = await fetch(url);
+    console.log('Response status:', response.status);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     
     const data: BinanceKline[] = await response.json();
+    console.log('Raw data received:', data.length, 'items');
+    
+    // Log the first item to see the structure
+    if (data.length > 0) {
+      console.log('First raw item:', data[0]);
+    }
+    
     const normalizedData = data.map(normalizeCandle).filter((candle): candle is CandleData => candle !== null);
-    console.log('Fetched', normalizedData.length, 'candles');
+    console.log('Normalized data:', normalizedData.length, 'candles');
     return normalizedData;
   } catch (error) {
-    console.error('Failed to fetch history:', error);
+    console.error('Fetch error:', error);
     return [];
   }
 };
@@ -132,9 +159,9 @@ const mergeBars = (newBars: CandleData[], existingBars: CandleData[]): CandleDat
   return Array.from(uniqueBars.values()).sort((a, b) => a.time - b.time);
 };
 
-const cacheBars = (symbol: string, bars: CandleData[]) => {
+const cacheBars = (symbol: string, bars: CandleData[], period: TimePeriod) => {
   try {
-    localStorage.setItem(`btc_chart_${symbol}`, JSON.stringify({
+    localStorage.setItem(`btc_chart_${symbol}_${period}`, JSON.stringify({
       bars,
       timestamp: Date.now()
     }));
@@ -143,9 +170,9 @@ const cacheBars = (symbol: string, bars: CandleData[]) => {
   }
 };
 
-const getCachedBars = (symbol: string): CandleData[] => {
+const getCachedBars = (symbol: string, period: TimePeriod): CandleData[] => {
   try {
-    const cached = localStorage.getItem(`btc_chart_${symbol}`);
+    const cached = localStorage.getItem(`btc_chart_${symbol}_${period}`);
     if (!cached) return [];
     
     const data = JSON.parse(cached);
@@ -153,7 +180,7 @@ const getCachedBars = (symbol: string): CandleData[] => {
     
     // Cache is valid for 1 hour
     if (cacheAge > 60 * 60 * 1000) {
-      localStorage.removeItem(`btc_chart_${symbol}`);
+      localStorage.removeItem(`btc_chart_${symbol}_${period}`);
       return [];
     }
     
@@ -161,6 +188,57 @@ const getCachedBars = (symbol: string): CandleData[] => {
   } catch (error) {
     console.error('Failed to get cached bars:', error);
     return [];
+  }
+};
+
+const getTimeRange = (period: TimePeriod): { startTime: number; endTime: number } => {
+  const now = Date.now();
+  const endTime = now;
+  
+  let startTime: number;
+  
+  switch (period) {
+    case "1h":
+      startTime = now - 60 * 60 * 1000; // 1 hour ago
+      break;
+    case "24h":
+      startTime = now - 24 * 60 * 60 * 1000; // 24 hours ago
+      break;
+    case "7D":
+      startTime = now - 7 * 24 * 60 * 60 * 1000; // 7 days ago
+      break;
+    case "1M":
+      startTime = now - 30 * 24 * 60 * 60 * 1000; // 30 days ago
+      break;
+    case "3M":
+      startTime = now - 90 * 24 * 60 * 60 * 1000; // 90 days ago
+      break;
+    case "1Y":
+      startTime = now - 365 * 24 * 60 * 60 * 1000; // 365 days ago
+      break;
+    default:
+      startTime = now - 7 * 24 * 60 * 60 * 1000; // Default to 7 days
+  }
+  
+  return { startTime, endTime };
+};
+
+const getIntervalForPeriod = (period: TimePeriod): string => {
+  switch (period) {
+    case "1h":
+      return "1m";
+    case "24h":
+      return "5m";
+    case "7D":
+      return "1h";
+    case "1M":
+      return "4h";
+    case "3M":
+      return "1d";
+    case "1Y":
+      return "1d";
+    default:
+      return "1h";
   }
 };
 
@@ -180,6 +258,8 @@ export default function BTCRealtimeChart({
   const resizeObsRef = useRef<ResizeObserver | null>(null);
 
   const [pct, setPct] = useState<number>(percent);
+  const [selectedPeriod, setSelectedPeriod] = useState<TimePeriod>("7D");
+  const [isChartReady, setIsChartReady] = useState<boolean>(false);
   const lastPriceRef = useRef<number | null>(null);
   const [candleHistory, setCandleHistory] = useState<CandleData[]>([]);
   const oldestLoadedTimeRef = useRef<UTCTimestamp | null>(null);
@@ -197,13 +277,6 @@ export default function BTCRealtimeChart({
       const now = Math.floor(Date.now() / 1000) as UTCTimestamp;
       const startTime = oldestLoadedTimeRef.current || (now - 7 * 24 * 60 * 60) as UTCTimestamp;
       
-      console.log('Updating limit lines:', {
-        price: currentPrice,
-        upper: upperLimitPrice,
-        lower: lowerLimitPrice,
-        pct: pct
-      });
-      
       upperLimitRef.current.setData([
         { time: startTime, value: upperLimitPrice },
         { time: now, value: upperLimitPrice },
@@ -218,21 +291,29 @@ export default function BTCRealtimeChart({
   );
 
   const loadInitialData = useCallback(async () => {
-    const now = Date.now();
-    const oneWeekAgo = now - 7 * 24 * 60 * 60 * 1000;
+    const { startTime, endTime } = getTimeRange(selectedPeriod);
+    const interval = getIntervalForPeriod(selectedPeriod);
+    
+    console.log('loadInitialData called for period:', selectedPeriod, 'interval:', interval);
+    console.log('Time range:', new Date(startTime), 'to', new Date(endTime));
+    console.log('Time range timestamps:', startTime, 'to', endTime);
     
     // Try to load from cache first
-    let bars = getCachedBars(symbol);
+    let bars = getCachedBars(symbol, selectedPeriod);
+    console.log('Cached bars:', bars.length);
     
     if (bars.length === 0) {
+      console.log('No cached data, fetching from API...');
       // Fetch from API
-      bars = await fetchHistory(symbol, oneWeekAgo, now);
+      bars = await fetchHistory(symbol, startTime, endTime, interval);
+      console.log('API returned bars:', bars.length);
       if (bars.length > 0) {
-        cacheBars(symbol, bars);
+        cacheBars(symbol, bars, selectedPeriod);
       }
     }
     
     if (bars && bars.length > 0) {
+      console.log('Raw bars before validation:', bars.length);
       // Validate that all bars have valid data
       const validBars = bars.filter(bar => 
         bar && 
@@ -248,7 +329,25 @@ export default function BTCRealtimeChart({
         isFinite(bar.close)
       );
       
+      console.log('Valid bars after validation:', validBars.length);
+      
       if (validBars.length > 0) {
+        console.log('First bar:', validBars[0]);
+        console.log('Last bar:', validBars[validBars.length - 1]);
+        
+        // Check if data timestamps are within expected range
+        const { startTime, endTime } = getTimeRange(selectedPeriod);
+        const expectedStart = Math.floor(startTime / 1000);
+        const expectedEnd = Math.floor(endTime / 1000);
+        
+        console.log('Timestamp range check:', {
+          dataStart: validBars[0].time,
+          dataEnd: validBars[validBars.length - 1].time,
+          expectedStart,
+          expectedEnd,
+          dataInRange: validBars[0].time >= expectedStart && validBars[validBars.length - 1].time <= expectedEnd
+        });
+        
         setCandleHistory(validBars);
         oldestLoadedTimeRef.current = validBars[0].time;
         newestLoadedTimeRef.current = validBars[validBars.length - 1].time;
@@ -269,12 +368,12 @@ export default function BTCRealtimeChart({
     }
     
     return bars;
-  }, [symbol]);
+  }, [symbol, selectedPeriod, updateLimitLines]);
+
+
 
   const loadMoreRecentData = useCallback(async (to: UTCTimestamp) => {
-    console.log('loadMoreRecentData called with to:', new Date(to * 1000), 'newestLoaded:', newestLoadedTimeRef.current ? new Date(newestLoadedTimeRef.current * 1000) : 'null');
     if (!newestLoadedTimeRef.current || Number(to) <= Number(newestLoadedTimeRef.current)) {
-      console.log('Skipping loadMoreRecentData - no need to load more recent data');
       return;
     }
     
@@ -286,9 +385,7 @@ export default function BTCRealtimeChart({
     
     // Use functional state update to avoid dependency on candleHistory
     setCandleHistory(currentHistory => {
-      console.log('Current history length:', currentHistory.length, 'New recent bars:', newBars.length);
       const mergedBars = mergeBars(newBars, currentHistory);
-      console.log('Merged recent bars length:', mergedBars.length);
       if (mergedBars.length > 0) {
         // Validate that all bars have valid data
         const validBars = mergedBars.filter(bar => 
@@ -343,9 +440,7 @@ export default function BTCRealtimeChart({
   }, [symbol]);
 
   const loadMoreHistory = useCallback(async (from: UTCTimestamp) => {
-    console.log('loadMoreHistory called with from:', new Date(from * 1000), 'oldestLoaded:', oldestLoadedTimeRef.current ? new Date(oldestLoadedTimeRef.current * 1000) : 'null');
     if (!oldestLoadedTimeRef.current || Number(from) >= Number(oldestLoadedTimeRef.current)) {
-      console.log('Skipping loadMoreHistory - no need to load more data');
       return;
     }
     
@@ -355,7 +450,6 @@ export default function BTCRealtimeChart({
     // Don't load data older than 30 days
     const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
     if (newStartTime < thirtyDaysAgo) {
-      console.log('Skipping - data would be too old');
       return;
     }
     
@@ -364,9 +458,7 @@ export default function BTCRealtimeChart({
     
     // Use functional state update to avoid dependency on candleHistory
     setCandleHistory(currentHistory => {
-      console.log('Current history length:', currentHistory.length, 'New bars:', newBars.length);
       const mergedBars = mergeBars(newBars, currentHistory);
-      console.log('Merged bars length:', mergedBars.length);
       if (mergedBars.length > 0) {
         // Validate that all bars have valid data
         const validBars = mergedBars.filter(bar => 
@@ -426,8 +518,8 @@ export default function BTCRealtimeChart({
 
     const chart = createChart(containerRef.current, {
       width: containerRef.current.clientWidth,
-      height,
-      layout: { background: { type: ColorType.Solid, color: "#131313" }, textColor: "#d1d4dc" },
+      height: height - 60, // Account for time selector
+      layout: { background: { type: ColorType.Solid, color: "#111111" }, textColor: "#d1d4dc" },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       rightPriceScale: { borderVisible: false },
       timeScale: { 
@@ -442,9 +534,13 @@ export default function BTCRealtimeChart({
         visible: true,
         tickMarkFormatter: (time: number) => {
           const date = new Date(time * 1000);
+          const month = (date.getMonth() + 1).toString().padStart(2, '0');
           const day = date.getDate().toString().padStart(2, '0');
           const hours = date.getHours().toString().padStart(2, '0');
-          return `${day} ${hours}`;
+          const year = date.getFullYear().toString().slice(-2); // Last 2 digits of year
+          
+          // Show a more complete date format
+          return `${month}/${day}/${year}`;
         }
       },
       crosshair: { mode: CrosshairMode.Normal },
@@ -463,7 +559,7 @@ export default function BTCRealtimeChart({
       color: "#009286",
       lineWidth: 2,
       lineStyle: 1,
-      title: "Max Limit",
+      title: "Bull Trigger",
     });
 
     // Add lower limit line (red)
@@ -471,39 +567,22 @@ export default function BTCRealtimeChart({
       color: "#FF4747",
       lineWidth: 2,
       lineStyle: 1,
-      title: "Min Limit",
+      title: "Bear Trigger",
     });
 
     chartRef.current = chart;
     seriesRef.current = series;
     upperLimitRef.current = upperLimit;
     lowerLimitRef.current = lowerLimit;
+    
+    // Mark chart as ready
+    setIsChartReady(true);
 
-    // Load initial data and set up chart with a small delay to ensure chart is ready
-    setTimeout(() => {
-      loadInitialData().then((bars) => {
-        // Set time range to show past week after data is loaded
-        if (bars && bars.length > 0) {
-          const now = Math.floor(Date.now() / 1000);
-          const oneWeekAgo = now - 7 * 24 * 60 * 60;
-          try {
-            chart.timeScale().setVisibleRange({
-              from: oneWeekAgo as UTCTimestamp,
-              to: now as UTCTimestamp,
-            });
-            // Ensure the chart scrolls to the rightmost position (newest data)
-            chart.timeScale().scrollToPosition(0, false);
-          } catch (error) {
-            // console.error('Failed to set visible range:', error);
-          }
-        }
-      });
-    }, 100);
+
 
     // Subscribe to visible time range changes for lazy loading
     chart.timeScale().subscribeVisibleTimeRangeChange((range) => {
       if (range && range.from && !isUpdatingRef.current) {
-        console.log('Visible range changed:', new Date(Number(range.from) * 1000), 'to', new Date(Number(range.to) * 1000));
         
         // Load more history if scrolling left (earlier time)
         if (oldestLoadedTimeRef.current && Number(range.from) < Number(oldestLoadedTimeRef.current)) {
@@ -535,13 +614,14 @@ export default function BTCRealtimeChart({
       seriesRef.current = null;
       upperLimitRef.current = null;
       lowerLimitRef.current = null;
+      setIsChartReady(false);
     };
      }, [height]);
 
   // React to external height prop changes without recreating the chart
   useEffect(() => {
     if (chartRef.current) {
-      chartRef.current.applyOptions({ height });
+      chartRef.current.applyOptions({ height: height - 60 }); // Account for time selector
     }
   }, [height]);
 
@@ -550,6 +630,155 @@ export default function BTCRealtimeChart({
     setPct(clamp(percent, 0, 1));
   }, [percent]);
 
+  // Monitor candle history changes
+  useEffect(() => {
+  }, [candleHistory]);
+
+  // Load initial data when chart is ready
+  useEffect(() => {
+    if (isChartReady && chartRef.current && seriesRef.current) {
+      console.log('Loading initial data for chart...');
+      loadInitialData().then((bars) => {
+        console.log('Initial data loaded:', bars?.length, 'bars');
+        if (bars && bars.length > 0) {
+          console.log('Sample bars:', bars.slice(0, 3));
+          console.log('Time range of bars:', {
+            first: new Date(bars[0].time * 1000),
+            last: new Date(bars[bars.length - 1].time * 1000)
+          });
+          
+          // Set the data on the chart series
+          if (seriesRef.current) {
+            try {
+              console.log('Setting data on chart series...');
+              seriesRef.current.setData(bars);
+              console.log('Data set successfully');
+            } catch (error) {
+              console.error('Failed to set initial chart data:', error);
+            }
+          }
+          
+          const { startTime, endTime } = getTimeRange(selectedPeriod);
+          console.log('Setting visible range:', {
+            from: new Date(startTime),
+            to: new Date(endTime),
+            fromTimestamp: Math.floor(startTime / 1000),
+            toTimestamp: Math.floor(endTime / 1000)
+          });
+          
+          try {
+            chartRef.current?.timeScale().setVisibleRange({
+              from: Math.floor(startTime / 1000) as UTCTimestamp,
+              to: Math.floor(endTime / 1000) as UTCTimestamp,
+            });
+            chartRef.current?.timeScale().scrollToPosition(0, false);
+            console.log('Visible range set successfully');
+          } catch (error) {
+            console.error('Failed to set visible range:', error);
+          }
+        }
+      });
+    }
+  }, [isChartReady, loadInitialData]);
+
+  // Reload data when selected period changes
+  useEffect(() => {
+    if (chartRef.current && seriesRef.current) {
+      // Update tick mark formatter based on selected period
+      if (chartRef.current) {
+        chartRef.current.timeScale().applyOptions({
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const year = date.getFullYear().toString().slice(-2);
+            
+            // Adapt format based on time period
+            if (selectedPeriod === "1h") {
+              return `${hours}:00`;
+            } else if (selectedPeriod === "24h") {
+              return `${day} ${hours}:00`;
+            } else if (selectedPeriod === "7D") {
+              return `${month}/${day}`;
+            } else {
+              return `${month}/${day}/${year}`;
+            }
+          }
+        });
+      }
+      
+      // Clear current data and reload for new period
+      setCandleHistory([]);
+      oldestLoadedTimeRef.current = null;
+      newestLoadedTimeRef.current = null;
+      
+      const { startTime, endTime } = getTimeRange(selectedPeriod);
+      const interval = getIntervalForPeriod(selectedPeriod);
+      
+      fetchHistory(symbol, startTime, endTime, interval).then((bars) => {
+        console.log('Time period change - bars received:', bars?.length);
+        if (bars && bars.length > 0) {
+          const validBars = bars.filter(bar => 
+            bar && 
+            typeof bar.time === 'number' && 
+            bar.time > 0 &&
+            typeof bar.open === 'number' && 
+            typeof bar.high === 'number' && 
+            typeof bar.low === 'number' && 
+            typeof bar.close === 'number' &&
+            isFinite(bar.open) && 
+            isFinite(bar.high) && 
+            isFinite(bar.low) && 
+            isFinite(bar.close)
+          );
+          
+          console.log('Time period change - valid bars:', validBars.length);
+          
+          if (validBars.length > 0) {
+            console.log('Time period change - setting data on chart');
+            console.log('Sample bars for new period:', validBars.slice(0, 3));
+            console.log('Time range of new bars:', {
+              first: new Date(validBars[0].time * 1000),
+              last: new Date(validBars[validBars.length - 1].time * 1000)
+            });
+            
+            setCandleHistory(validBars);
+            oldestLoadedTimeRef.current = validBars[0].time;
+            newestLoadedTimeRef.current = validBars[validBars.length - 1].time;
+            
+            if (seriesRef.current && chartRef.current) {
+              try {
+                console.log('Setting new data on chart series...');
+                seriesRef.current.setData(validBars);
+                console.log('New data set successfully');
+                
+                // Set visible range for new period
+                console.log('Setting new visible range:', {
+                  from: new Date(startTime),
+                  to: new Date(endTime)
+                });
+                
+                chartRef.current.timeScale().setVisibleRange({
+                  from: Math.floor(startTime / 1000) as UTCTimestamp,
+                  to: Math.floor(endTime / 1000) as UTCTimestamp,
+                });
+                console.log('New visible range set successfully');
+                
+                // Update limit lines with the latest price
+                if (lastPriceRef.current) {
+                  updateLimitLines(lastPriceRef.current);
+                }
+              } catch (error) {
+                console.error('Failed to set chart data for new period:', error);
+              }
+            }
+          }
+        }
+      });
+    }
+  }, [selectedPeriod, symbol, updateLimitLines]);
+
   // WebSocket: stream klines
   useEffect(() => {
     let stopped = false;
@@ -557,7 +786,8 @@ export default function BTCRealtimeChart({
 
     const connect = () => {
       if (stopped) return;
-      const url = `wss://stream.binance.com:9443/ws/${symbol}@kline_1m`;
+      const interval = getIntervalForPeriod(selectedPeriod);
+      const url = `wss://stream.binance.com:9443/ws/${symbol}@kline_${interval}`;
       const ws = new WebSocket(url);
       wsRef.current = ws;
 
@@ -584,7 +814,7 @@ export default function BTCRealtimeChart({
             // Closed candle - add to history
             setCandleHistory(prev => {
               const newHistory = [...prev, normalizedCandle];
-              cacheBars(symbol, newHistory);
+              cacheBars(symbol, newHistory, selectedPeriod);
               newestLoadedTimeRef.current = normalizedCandle.time;
               
               // Only update the specific candle, not the entire chart
@@ -641,7 +871,35 @@ export default function BTCRealtimeChart({
         /* ignore */
       }
     };
-  }, [symbol, onPrice, updateLimitLines]);
+  }, [symbol, selectedPeriod, onPrice, updateLimitLines]);
 
-  return <div ref={containerRef} style={{ width: "100%", height }} />;
+  const timePeriods: TimePeriod[] = ["1h", "24h", "7D", "1M", "3M", "1Y"];
+
+  return (
+    <div style={{ width: "100%", height }}>
+      {/* Time Selector */}
+      <div className="flex justify-center mb-4">
+        <div className="flex bg-[#2A2A2A] rounded-lg p-1 gap-1">
+          {timePeriods.map((period) => (
+            <button
+              key={period}
+              onClick={() => {
+                setSelectedPeriod(period);
+              }}
+              className={`px-3 py-1 text-xs font-medium rounded-md transition-all ${
+                selectedPeriod === period
+                  ? "bg-[#3A3A3A] border-white text-white"
+                  : "text-[#B6B6B6] hover:text-white hover:bg-[#3A3A3A]"
+              }`}
+            >
+              {period}
+            </button>
+          ))}
+        </div>
+      </div>
+      
+      {/* Chart Container */}
+      <div ref={containerRef} style={{ width: "100%", height: height - 60 }} />
+    </div>
+  );
 }

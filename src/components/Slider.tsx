@@ -61,7 +61,7 @@ const CustomSlider = ({ initialValue = 1, onChange }: CustomSliderProps) => {
     }, [isDragging, handleMouseMove, handleMouseUp])
 
     return (
-        <div className="flex flex-col justify-center items-center space-y-4 pt-2 w-full min-w-[290px] max-w-[300px]">
+        <div className="flex flex-col justify-center items-center space-y-6 w-full min-w-[290px] max-w-[300px]">
             {/* Top labels */}
             <div className="flex justify-between items-center w-full">
                 <span className="text-white text-sm sm:text-base md:-ml-2 -ml-1 tracking-tighter">Percentage</span>
@@ -122,18 +122,25 @@ const CustomSlider = ({ initialValue = 1, onChange }: CustomSliderProps) => {
             </div>
 
             {/* Bottom numbers */}
-            <div className="flex justify-between w-full text-xs sm:text-sm px-1">
-                {Array.from({ length: 10 }, (_, i) => i + 1).map((step) => (
-                    <span
-                        key={step}
-                        className="transition-colors duration-200"
-                        style={{
-                            color: activeStep === step ? "white" : "#676767",
-                        }}
-                    >
-                        {step}
-                    </span>
-                ))}
+            <div className="relative w-full text-xs sm:text-sm">
+                {Array.from({ length: 10 }, (_, i) => i + 1).map((step) => {
+                    const leftPosition = `calc(${(step - 1) * 100}% / 9)`
+                    
+                    return (
+                        <button
+                            key={step}
+                            onClick={() => handleStepClick(step)}
+                            className="absolute transition-colors duration-200 hover:text-white cursor-pointer z-10"
+                            style={{
+                                left: leftPosition,
+                                transform: "translateX(-50%)",
+                                color: activeStep === step ? "white" : "#676767",
+                            }}
+                        >
+                            {step}
+                        </button>
+                    )
+                })}
             </div>
         </div>
     )

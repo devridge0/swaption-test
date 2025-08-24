@@ -14,12 +14,25 @@ const TradingInterface: React.FC = () => {
     const [currentTime, setCurrentTime] = useState<string>("--:--:--")
     const [currentPrice, setCurrentPrice] = useState<number | null>(null)
 
-    // Debug price updates
-    useEffect(() => {
-        if (currentPrice) {
-            console.log('Current Bitcoin price updated:', currentPrice);
+    // Calculate payoff based on amount and 80% return rate
+    const calculatePayoff = () => {
+        const numAmount = parseFloat(amount) || 0
+        const returnRate = 0.80 // 80%
+        
+        // In the money (winning scenario): get back original amount + 80% return
+        const inTheMoney = numAmount + (numAmount * returnRate)
+        
+        // Out of the money (losing scenario): lose the original amount
+        const outOfTheMoney = 0
+        
+        return {
+            inTheMoney,
+            outOfTheMoney,
+            returnPercentage: returnRate * 100
         }
-    }, [currentPrice]);
+    }
+
+    const payoff = calculatePayoff()
 
     // safer interval
     useEffect(() => {
@@ -53,9 +66,9 @@ const TradingInterface: React.FC = () => {
                             <div className="flex items-center text-base sm:text-lg md:text-xl text-white font-bold">
                                 <span className="tracking-wider">
                                     {currentPrice ? (
-                                        currentPrice.toLocaleString('en-US', { 
-                                            minimumFractionDigits: 2, 
-                                            maximumFractionDigits: 2 
+                                        currentPrice.toLocaleString('en-US', {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2
                                         })
                                     ) : (
                                         <span className="text-gray-400">Loading...</span>
@@ -72,7 +85,7 @@ const TradingInterface: React.FC = () => {
                     </div>
 
                     {/* Percentage */}
-                    <div className="mt-5 flex justify-center">
+                    <div className="mt-3 flex justify-center">
                         <div className="text-center w-full flex justify-center">
                             <CustomSlider
                                 initialValue={percentage}
@@ -80,51 +93,106 @@ const TradingInterface: React.FC = () => {
                             />
                         </div>
                     </div>
+                    <div className="mt-8 flex items-center justify-between text-[#B6B6B6]">
+                        <div className="flex flex-col">
+                            <span className="tracking-tighter">
+                                Bear trigger:
+                            </span>
+                            <span className="font-medium tracking-tighter text-[#FF4747]">
+                                {currentPrice ? (
+                                    (currentPrice * (1 - percentage / 100)).toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    })
+                                ) : (
+                                    <span className="text-gray-400">--</span>
+                                )}
+                            </span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="tracking-tighter">
+                                Bull trigger:
+                            </span>
+                            <span className="font-medium tracking-tighter text-[#009286]">
+                                {currentPrice ? (
+                                    (currentPrice * (1 + percentage / 100)).toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    })
+                                ) : (
+                                    <span className="text-gray-400">--</span>
+                                )}
+                            </span>
+                        </div>
+                    </div>
 
                     {/* Amount */}
-                    <div className="mt-5 flex justify-center items-center">
+                    <div className="mt-3 flex justify-center items-center">
                         <Input
-                            placeholder="Amount"
+                            placeholder="USDT"
                             value={amount}
                             onChange={(e) => setAmount(e.target.value)}
                             className="bg-white text-gray-900 outline-none focus:border-green-500 placeholder-gray-500 px-3 py-2 rounded-xl text-sm sm:text-base font-medium border-0 w-full max-w-sm h-[48px] sm:h-[52px]"
                             aria-label="amount"
+                            autoFocus
                         />
                     </div>
 
+                    {/* Amount Select Buttons */}
+                    <div className="mt-3 flex justify-center items-center">
+                        <div className="flex gap-2">
+                            {[10, 50, 100, 500, 1000].map((value) => (
+                                <Button
+                                    key={value}
+                                    variant="outline"
+                                    onClick={() => setAmount(value.toString())}
+                                    className={`flex items-center justify-center md:w-[56px] h-[21px] rounded-full text-xs font-medium transition-all ${
+                                        amount === value.toString()
+                                            ? 'bg-[#ffffff]/10 border-white text-white'
+                                            : 'bg-transparent border-[#A0A0A0] text-[#B6B6B6] hover:bg-[#ffffff]/10 hover:border-white hover:text-white'
+                                    }`}
+                                >
+                                    {value}
+                                </Button>
+                            ))}
+                        </div>
+                    </div>
+
                     {/* Return */}
-                    <div className="mt-5">
-                        <div className="text-white text-sm tracking-tighter mb-2">Return</div>
+                    <div className="mt-3">
+                        <div className="text-white text-sm tracking-tighter mb-2">Pay off</div>
                         <div className="text-xs sm:text-sm -mt-1 space-y-1">
-                                                         <div className="flex items-center justify-between text-[#B6B6B6]">
-                                 <span className="tracking-tighter">
-                                     In the money ({currentPrice ? currentPrice.toLocaleString('en-US', { 
-                                         minimumFractionDigits: 2, 
-                                         maximumFractionDigits: 2 
-                                     }) : "Loading..."}):
-                                 </span>
-                                 <span className="tabular-nums tracking-tighter">$0.00 (0%)</span>
-                             </div>
-                             <div className="flex items-center justify-between text-[#B6B6B6]">
-                                 <span className="tracking-tighter">
-                                     Out of the money ({currentPrice ? currentPrice.toLocaleString('en-US', { 
-                                         minimumFractionDigits: 2, 
-                                         maximumFractionDigits: 2 
-                                     }) : "Loading..."}):
-                                 </span>
-                                 <span className="tabular-nums tracking-tighter">$0.00 (80%)</span>
-                             </div>
+                            <div className="flex items-center justify-between text-[#B6B6B6]">
+                                <span className="tracking-tighter">
+                                    In the money ({currentPrice ? currentPrice.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    }) : "Loading..."}):
+                                </span>
+                                <span className="tabular-nums tracking-tighter">${payoff.inTheMoney.toFixed(2)} ({payoff.returnPercentage.toFixed(0)}%)</span>
+                            </div>
+                            <div className="flex items-center justify-between text-[#B6B6B6]">
+                                <span className="tracking-tighter">
+                                    Out of the money ({currentPrice ? currentPrice.toLocaleString('en-US', {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2
+                                    }) : "Loading..."}):
+                                </span>
+                                <span className="tabular-nums tracking-tighter">${payoff.outOfTheMoney.toFixed(2)} (0%)</span>
+                            </div>
                         </div>
                     </div>
 
                     {/* Actions */}
-                    <div className="grid grid-cols-2 gap-3 mt-5">
+                    <div className="grid grid-cols-2 gap-3 mt-3">
                         <Button
                             variant="outline"
                             className="flex items-center justify-center gap-2 w-full h-10 sm:h-11 bg-transparent rounded-full text-sm sm:text-base border-[#FF4747] text-[#FF4747] hover:bg-red-500/10"
                             aria-label="Bearish bet"
                         >
-                            <span className="text-[#FF4747]">↓</span>
+                            <span className="w-4 h-4">
+                                <img src="/assets/img/Bear.png" alt="Bear" className="w-full h-full text-[#FF4747]" />
+                            </span>
                             <span className="text-white">Bear</span>
                         </Button>
                         <Button
@@ -132,7 +200,9 @@ const TradingInterface: React.FC = () => {
                             className="flex items-center justify-center gap-2 w-full h-10 sm:h-11 bg-transparent rounded-full text-sm sm:text-base border-[#009286] text-[#009286] hover:bg-emerald-700/10"
                             aria-label="Bullish bet"
                         >
-                            <span className="text-[#009286]">↑</span>
+                            <span className="w-4 h-4">
+                                <img src="/assets/img/Bull.png" alt="Bull" className="w-full h-full text-[#009286]" />
+                            </span>
                             <span className="text-white">Bull</span>
                         </Button>
                     </div>
@@ -140,9 +210,9 @@ const TradingInterface: React.FC = () => {
 
                 {/* Right Panel */}
                 <div className="relative flex flex-1 w-full border-t md:border-t-0 md:border-l border-[#A0A0A0] p-4 sm:p-6 min-h-[400px]">
-                    <BTCRealtimeChart 
-                        percent={percentage/100} 
-                        height={400} 
+                    <BTCRealtimeChart
+                        percent={percentage / 100}
+                        height={400}
                         onPrice={setCurrentPrice}
                     />
 
