@@ -14,6 +14,7 @@ const Index = () => {
   const [currentPrice, setCurrentPrice] = useState<number | null>(45000) // Mock price for now
   const [selectedTime, setSelectedTime] = useState<number>(0) // default to 2m
   const [isHighLowSelected, setIsHighLowSelected] = useState<boolean>(false)
+  const [currentPercent, setCurrentPercent] = useState<number>(0.02) // Track current percentage
 
   // safer interval
   useEffect(() => {
@@ -35,13 +36,18 @@ const Index = () => {
     setSelectedTime(newTime)
   }
 
+  const handlePercentageChange = (newPercent: number) => {
+    setCurrentPercent(newPercent)
+    console.log("percent ====>", newPercent)
+  }
+
   const renderActiveComponent = () => {
     switch (activeTab) {
       case 'bull-bear':
         return (
           <BullBear 
             currentPrice={currentPrice} 
-            onPercentageChange={handleTimeChange}
+            onPercentageChange={handlePercentageChange}
           />
         );
       case 'high-low':
@@ -126,7 +132,7 @@ const Index = () => {
             {/* Right Panel */}
             <div className="relative flex flex-1 w-full border-t md:border-t-0 md:border-l border-[#A0A0A0] p-4 sm:p-6 min-h-[400px]">
               <BTCRealtimeChart
-                percent={0.02} // Default percentage for bull/bear mode
+                percent={currentPercent/100} // Dynamic percentage from BullBear component
                 height={450}
                 onPrice={setCurrentPrice}
                 showBullBearTriggers={!isHighLowSelected}

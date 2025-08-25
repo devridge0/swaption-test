@@ -268,8 +268,21 @@ const fetchSideSwapDailyCandles = async (symbol: string): Promise<CandleData[]> 
   return [];
 };
 
+/**
+ * BTC Realtime Chart Component
+ * 
+ * Time Periods:
+ * - 1m: Each candle represents 1 minute of price data (from Binance)
+ * - 30m: Each candle represents 30 minutes of price data (from Binance)  
+ * - 1h: Each candle represents 1 hour of price data (from Binance)
+ * - 1d: Each candle represents 1 day of price data (from SideSwap)
+ * 
+ * Data Sources:
+ * - Intraday periods (1m, 30m, 1h): Binance WebSocket for real-time updates
+ * - Daily period (1d): SideSwap WebSocket for daily candle updates
+ */
 export default function BTCRealtimeChart({
-  percent = 0.02,
+  percent,
   symbol = "btcusdt",
   height = 420,
   showControls = true,
@@ -295,40 +308,80 @@ export default function BTCRealtimeChart({
   const newestLoadedTimeRef = useRef<UTCTimestamp | null>(null);
   const isUpdatingRef = useRef<boolean>(false);
   const realtimePriceDataRef = useRef<Array<{ time: UTCTimestamp; value: number }>>([]);
+  const chartDimensionsRef = useRef<{ width: number; height: number }>({ width: 0, height: 0 });
+  const currentPercentRef = useRef<number>(percent);
 
   const updateLimitLines = useCallback(
-    (currentPrice: number) => {
-      if (!upperLimitRef.current || !lowerLimitRef.current) return;
+    (currentPrice: number, customPercent?: number) => {
+      console.log('updateLimitLines called with:', { currentPrice, customPercent, currentPercentRef: currentPercentRef.current });
+      
+      if (!upperLimitRef.current || !lowerLimitRef.current) {
+        console.log('Limit line refs not available:', { upper: !!upperLimitRef.current, lower: !!lowerLimitRef.current });
+        return;
+      }
 
-      const upperLimitPrice = currentPrice * (1 + pct);
-      const lowerLimitPrice = currentPrice * (1 - pct);
+      const percentToUse = customPercent !== undefined ? customPercent : currentPercentRef.current;
+      const upperLimitPrice = currentPrice * (1 + percentToUse);
+      const lowerLimitPrice = currentPrice * (1 - percentToUse);
+
+      console.log('Calculated limit prices:', { upperLimitPrice, lowerLimitPrice, percentToUse });
 
       // Use the chart's actual data range instead of fixed time
       const now = Math.floor(Date.now() / 1000) as UTCTimestamp;
       const startTime = oldestLoadedTimeRef.current || (now - 7 * 24 * 60 * 60) as UTCTimestamp;
 
-      upperLimitRef.current.setData([
-        { time: startTime, value: upperLimitPrice },
-        { time: now, value: upperLimitPrice },
-      ]);
+      try {
+        // Clear existing data first
+        upperLimitRef.current.setData([]);
+        lowerLimitRef.current.setData([]);
+        
+        // Set new data
+        upperLimitRef.current.setData([
+          { time: startTime, value: upperLimitPrice },
+          { time: now, value: upperLimitPrice },
+        ]);
 
-      lowerLimitRef.current.setData([
-        { time: startTime, value: lowerLimitPrice },
-        { time: now, value: lowerLimitPrice },
-      ]);
+        lowerLimitRef.current.setData([
+          { time: startTime, value: lowerLimitPrice },
+          { time: now, value: lowerLimitPrice },
+        ]);
+        
+        console.log('Limit lines updated successfully with new data');
+        
+        // Force chart to redraw
+        if (chartRef.current) {
+          chartRef.current.timeScale().fitContent();
+        }
+        
+        // Ensure lines are visible
+        console.log('Limit line series status:', {
+          upper: upperLimitRef.current,
+          lower: lowerLimitRef.current
+        });
+      } catch (error) {
+        console.error('Error updating limit lines:', error);
+      }
     },
-    [pct]
+    []
   );
 
   // Helpers for time ranges and fetches
   const getTimeRange = useCallback((period: TimePeriod) => {
     const now = Date.now();
+    const periodDuration = getTimePeriodDuration(period);
+    
     if (period === "1d") {
       const start = now - 30 * 24 * 60 * 60 * 1000; // 30 days
       return { startTime: start, endTime: now };
     }
-    // Intraday: show ~3 days for better context
-    const start = now - 3 * 24 * 60 * 60 * 1000;
+    
+    // For intraday periods, show appropriate amount of data
+    // 1m: show ~2 days, 30m: show ~1 week, 1h: show ~2 weeks
+    let lookbackDays = 2;
+    if (period === "30m") lookbackDays = 7;
+    if (period === "1h") lookbackDays = 14;
+    
+    const start = now - lookbackDays * 24 * 60 * 60 * 1000;
     return { startTime: start, endTime: now };
   }, []);
 
@@ -337,6 +390,17 @@ export default function BTCRealtimeChart({
     if (p === "30m") return "30m";
     if (p === "1h") return "1h";
     return "1d";
+  };
+
+  // Map time periods to their actual duration in milliseconds
+  const getTimePeriodDuration = (p: TimePeriod): number => {
+    switch (p) {
+      case "1m": return 60 * 1000; // 1 minute
+      case "30m": return 30 * 60 * 1000; // 30 minutes
+      case "1h": return 60 * 60 * 1000; // 1 hour
+      case "1d": return 24 * 60 * 60 * 1000; // 1 day
+      default: return 60 * 1000;
+    }
   };
 
   const fetchBinanceCandles = useCallback(async (sym: string, period: TimePeriod): Promise<CandleData[]> => {
@@ -356,6 +420,8 @@ export default function BTCRealtimeChart({
         return [];
       }
       console.log('Binance API returned', data.length, 'raw klines');
+      
+      // Binance returns timestamps in milliseconds, convert to seconds for UTCTimestamp
       const candles: CandleData[] = data.map((k: any[]) => ({
         time: Math.floor(Number(k[0]) / 1000) as UTCTimestamp,
         open: Number(k[1]),
@@ -363,7 +429,9 @@ export default function BTCRealtimeChart({
         low: Number(k[3]),
         close: Number(k[4]),
       })).filter(c => Number.isFinite(c.open) && Number.isFinite(c.high) && Number.isFinite(c.low) && Number.isFinite(c.close));
+      
       console.log('Filtered to', candles.length, 'valid candles');
+      console.log('Time period:', period, 'Interval:', interval, 'Duration per candle:', getTimePeriodDuration(period), 'ms');
       return candles;
     } catch (error) {
       console.error('Error fetching Binance candles:', error);
@@ -612,22 +680,13 @@ export default function BTCRealtimeChart({
       timeScale: {
         timeVisible: true,
         secondsVisible: false,
-        rightOffset: 12,
-        barSpacing: 3,
+        rightOffset: 0,
+        barSpacing: selectedPeriod === "1d" ? 6 : 3, // Wider spacing for daily candles
         fixLeftEdge: false,
         fixRightEdge: false,
         lockVisibleTimeRangeOnResize: false,
         rightBarStaysOnScroll: false,
         visible: true,
-        // Ensure right-to-left flow
-        leftOffset: 12,
-        rightOffset: 0,
-        // Enable right-to-left scrolling
-        scrollBackward: true,
-        // Show newest data on the left
-        rightBarStaysOnScroll: false,
-        // Don't lock the right edge to allow leftward flow
-        fixRightEdge: false,
         tickMarkFormatter: (time: number) => {
           const date = new Date(time * 1000);
           const month = (date.getMonth() + 1).toString().padStart(2, '0');
@@ -635,8 +694,17 @@ export default function BTCRealtimeChart({
           const hours = date.getHours().toString().padStart(2, '0');
           const year = date.getFullYear().toString().slice(-2); // Last 2 digits of year
 
-          // Show a more complete date format
-          return `${month}/${day}/${year}`;
+          // Format based on selected time period
+          if (selectedPeriod === "1d") {
+            return `${month}/${day}/${year}`;
+          } else if (selectedPeriod === "1h") {
+            return `${month}/${day} ${hours}:00`;
+          } else if (selectedPeriod === "30m") {
+            return `${month}/${day} ${hours}:${Math.floor(date.getMinutes() / 30) * 30}`;
+          } else {
+            // 1m period
+            return `${month}/${day} ${hours}:${date.getMinutes().toString().padStart(2, '0')}`;
+          }
         }
       },
       crosshair: { mode: CrosshairMode.Normal },
@@ -704,6 +772,9 @@ export default function BTCRealtimeChart({
     upperLimitRef.current = upperLimit;
     lowerLimitRef.current = lowerLimit;
     realtimePriceRef.current = realtimePrice;
+    
+    // Store initial dimensions
+    chartDimensionsRef.current = { width: containerRef.current.clientWidth, height: height - 60 };
 
     // Mark chart as ready
     setIsChartReady(true);
@@ -732,11 +803,14 @@ export default function BTCRealtimeChart({
         const h = Math.floor(entry.contentRect.height);
         
         // Only update if dimensions actually changed
-        if (chartRef.current && (w !== chartRef.current.width() || h !== chartRef.current.height())) {
+        if (chartRef.current && (w !== chartDimensionsRef.current.width || h !== chartDimensionsRef.current.height)) {
           chartRef.current.applyOptions({ 
             width: w,
             height: h > 0 ? h : height - 60
           });
+          
+          // Update stored dimensions
+          chartDimensionsRef.current = { width: w, height: h > 0 ? h : height - 60 };
           
           // Force a redraw to ensure proper rendering
           chartRef.current.timeScale().fitContent();
@@ -765,10 +839,22 @@ export default function BTCRealtimeChart({
     }
   }, [height]);
 
-  // Keep pct synced with prop
+  // Keep pct synced with prop and update limit lines
   useEffect(() => {
-    setPct(clamp(percent, 0, 1));
-  }, [percent]);
+    console.log('Percent prop changed to:', percent);
+    const newPct = clamp(percent, 0, 1);
+    console.log('Clamped to:', newPct);
+    setPct(newPct);
+    currentPercentRef.current = newPct;
+    
+    // Update limit lines with current price when percent changes
+    if (lastPriceRef.current && Number.isFinite(lastPriceRef.current)) {
+      console.log('Calling updateLimitLines with price:', lastPriceRef.current);
+      updateLimitLines(lastPriceRef.current, newPct);
+    } else {
+      console.log('No valid price available for limit line update');
+    }
+  }, [percent, updateLimitLines]);
 
   // Handle showBullBearTriggers prop changes
   useEffect(() => {
@@ -934,7 +1020,32 @@ export default function BTCRealtimeChart({
   // Reload data when selected period changes
   useEffect(() => {
     if (chartRef.current && seriesRef.current) {
-      // No time scale option changes needed
+      // Update chart configuration for the new time period
+      const newBarSpacing = selectedPeriod === "1d" ? 6 : 3;
+      chartRef.current.applyOptions({
+        timeScale: {
+          barSpacing: newBarSpacing,
+          tickMarkFormatter: (time: number) => {
+            const date = new Date(time * 1000);
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            const hours = date.getHours().toString().padStart(2, '0');
+            const year = date.getFullYear().toString().slice(-2); // Last 2 digits of year
+
+            // Format based on selected time period
+            if (selectedPeriod === "1d") {
+              return `${month}/${day}/${year}`;
+            } else if (selectedPeriod === "1h") {
+              return `${month}/${day} ${hours}:00`;
+            } else if (selectedPeriod === "30m") {
+              return `${month}/${day} ${hours}:${Math.floor(date.getMinutes() / 30) * 30}`;
+            } else {
+              // 1m period
+              return `${month}/${day} ${hours}:${date.getMinutes().toString().padStart(2, '0')}`;
+            }
+          }
+        }
+      });
 
       // Clear current data and reload for new period
       setCandleHistory([]);
@@ -1045,6 +1156,7 @@ export default function BTCRealtimeChart({
             if (!data) return;
             const arr = Array.isArray(data) ? data : [data];
             const newCandles: CandleData[] = arr.map((d: any) => {
+              // SideSwap provides daily candles, so each candle represents 24 hours
               const tsSec = Math.floor(new Date(String(d.time) + "T00:00:00Z").getTime() / 1000) as UTCTimestamp;
               return {
                 time: tsSec,
@@ -1070,8 +1182,11 @@ export default function BTCRealtimeChart({
                       const newestTime = merged[merged.length - 1].time;
                       
                       // If user is viewing recent data, auto-scroll to keep newest visible on left
-                      if (Math.abs(currentLeftEdge - newestTime) < 60) { // Within 1 minute
-                        chartRef.current.timeScale().scrollToPosition(1, false);
+                      if (Math.abs(Number(currentLeftEdge) - Number(newestTime)) < 24 * 60 * 60) { // Within 1 day
+                        chartRef.current.timeScale().setVisibleRange({
+                          from: (Number(newestTime) - 7 * 24 * 60 * 60) as UTCTimestamp, // Show 7 days
+                          to: newestTime
+                        });
                       }
                     }
                   }
@@ -1115,6 +1230,9 @@ export default function BTCRealtimeChart({
             const payload = JSON.parse(evt.data);
             const k = payload?.k;
             if (!k) return;
+            
+            // Binance provides real-time kline data for the selected interval
+            // Each candle represents the exact time period selected (1m, 30m, 1h)
             const candle: CandleData = {
               time: Math.floor(Number(k.t) / 1000) as UTCTimestamp,
               open: Number(k.o),
@@ -1125,6 +1243,7 @@ export default function BTCRealtimeChart({
             if (!Number.isFinite(candle.open) || !Number.isFinite(candle.high) || !Number.isFinite(candle.low) || !Number.isFinite(candle.close)) {
               return;
             }
+            
             setCandleHistory(prev => {
               const merged = mergeBars([candle], prev);
               if (seriesRef.current) {
@@ -1138,9 +1257,11 @@ export default function BTCRealtimeChart({
                     if (visibleRange && visibleRange.to) {
                       const currentRightEdge = visibleRange.to;
                       const newestTime = merged[merged.length - 1].time;
+                      const periodDuration = getTimePeriodDuration(selectedPeriod);
                       
                       // If user is viewing recent data, auto-scroll to keep newest visible
-                      if (Math.abs(currentRightEdge - newestTime) < 60) { // Within 1 minute
+                      // Use the actual period duration for auto-scroll threshold
+                      if (Math.abs(Number(currentRightEdge) - Number(newestTime)) < periodDuration / 1000) { // Within 1 period
                         chartRef.current.timeScale().scrollToPosition(0, false);
                       }
                     }
@@ -1228,7 +1349,7 @@ export default function BTCRealtimeChart({
   return (
     <div style={{ width: "100%", height }}>
       {/* Time Selector */}
-      <div className="flex justify-center mb-4">
+      <div className="flex flex-col items-center mb-4">
         <div className="flex bg-[#2A2A2A] rounded-lg p-1 gap-1">
           {timePeriods.map((period) => (
             <button
@@ -1240,7 +1361,7 @@ export default function BTCRealtimeChart({
                   ? "bg-[#3A3A3A] border-white text-white"
                   : "text-[#B6B6B6] hover:text-white hover:bg-[#3A3A3A]"
                 }`}
-              title={`${period} candle intervals`}
+              title={`${period} candle intervals - Each candle represents ${period === "1d" ? "24 hours" : period === "1h" ? "1 hour" : period === "30m" ? "30 minutes" : "1 minute"} of price data`}
             >
               {period}
             </button>
