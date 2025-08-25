@@ -212,13 +212,13 @@ const TradingInterface: React.FC = () => {
                 <div className="relative flex flex-1 w-full border-t md:border-t-0 md:border-l border-[#A0A0A0] p-4 sm:p-6 min-h-[400px]">
                     <BTCRealtimeChart
                         percent={percentage / 100}
-                        height={400}
+                        height={450}
                         onPrice={setCurrentPrice}
                     />
 
                     {/* Time */}
-                    <div className="absolute bottom-6 right-8 z-20 text-xs sm:text-sm flex items-center gap-2 text-white">
-                        <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
+                    <div className="absolute bottom-2 right-6 md:bottom-6 md:right-8 z-20 text-xs sm:text-sm flex items-center gap-2 text-white">
+                        <img src="/assets/img/Clock.png" className="w-3 h-3 sm:w-4 sm:h-4" />    
                         <span className="tabular-nums tracking-tight">{currentTime}</span>
                     </div>
                 </div>

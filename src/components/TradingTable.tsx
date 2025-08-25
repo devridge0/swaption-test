@@ -103,7 +103,7 @@ export function TradingPositionsTable() {
                       size="sm"
                       className="h-6 w-6 p-0 text-white font-bold hover:text-white hover:bg-gray-800"
                     >
-                      <ExternalLink className="h-4 w-4" />
+                      <img src="/assets/img/Link.png" className="h-4 w-4" alt="Link"/>
                     </Button>
                   </TableCell>
                   <TableCell className=" py-4">
@@ -112,7 +112,7 @@ export function TradingPositionsTable() {
                       size="sm"
                       className="h-6 w-6 p-0 text-white font-bold hover:text-red-400 hover:bg-gray-800"
                     >
-                      <XCircle className="h-4 w-4" />
+                      <img src="/assets/img/Cancel.png" className="h-4 w-4" />
                     </Button>
                   </TableCell>
                 </TableRow>
