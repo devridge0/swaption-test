@@ -146,10 +146,10 @@ const TradingInterface: React.FC = () => {
                                     key={value}
                                     variant="outline"
                                     onClick={() => setAmount(value.toString())}
-                                    className={`flex items-center justify-center md:w-[56px] h-[21px] rounded-full text-xs font-medium transition-all ${
+                                    className={`flex items-center justify-center text-white md:w-[56px] h-[21px] rounded-full text-xs font-medium transition-all ${
                                         amount === value.toString()
-                                            ? 'bg-[#ffffff]/10 border-white text-white'
-                                            : 'bg-transparent border-[#A0A0A0] text-[#B6B6B6] hover:bg-[#ffffff]/10 hover:border-white hover:text-white'
+                                            ? 'bg-[#ffffff]/10 border-white hover:bg-[#ffffff]/10 text-white'
+                                            : 'bg-transparent border-[#A0A0A0] hover:bg-[#ffffff]/10 hover:border-white hover:text-white'
                                     }`}
                                 >
                                     {value}
