@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useNavigation } from "@/contexts/NavigationContext"
 
 const tabs = [
     { id: "bull-bear", label: "Bull/Bear" },
@@ -11,14 +12,14 @@ const tabs = [
 ]
 
 const Navbar = () => {
-    const [activeTab, setActiveTab] = useState("bull-bear")
+    const { activeTab, setActiveTab, navigateToTab } = useNavigation()
     const [isDropdownOpen, setIsDropdownOpen] = useState(false)
 
     const activeTabObj = tabs.find((tab) => tab.id === activeTab)
     const inactiveTabs = tabs.filter((tab) => tab.id !== activeTab)
 
     const handleTabClick = (tabId: string) => {
-        setActiveTab(tabId)
+        navigateToTab(tabId)
         setIsDropdownOpen(false) // Close dropdown when tab is selected
     }
 
@@ -28,7 +29,7 @@ const Navbar = () => {
                 {tabs.map((tab) => (
                     <button
                         key={tab.id}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => navigateToTab(tab.id)}
                         className={`
                 px-4 py-[5px] rounded-full text-[15px] h-[42px] tracking-tight
                 ${activeTab === tab.id ? "bg-white text-black" : "text-white opacity-50 hover:text-gray-200"}
