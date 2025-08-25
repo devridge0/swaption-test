@@ -107,8 +107,8 @@ const CustomSlider = ({ initialValue = 1, onChange }: CustomSliderProps) => {
                                 className="absolute transition-all duration-200 hover:scale-110 z-10"
                                 style={{
                                     left: leftPosition,
-                                    width: activeStep === step ? "11px" : "3px",
-                                    height: activeStep === step ? "11px" : "3px",
+                                    width: activeStep === step ? "11px" : "5px",
+                                    height: activeStep === step ? "11px" : "5px",
                                     backgroundColor: step <= activeStep ? "white" : "#676767",
                                     borderRadius: "50%",
                                     border: "none",

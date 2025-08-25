@@ -217,7 +217,7 @@ const TradingInterface: React.FC = () => {
                     />
 
                     {/* Time */}
-                    <div className="absolute bottom-4 right-4 z-20 text-xs sm:text-sm flex items-center gap-2 text-white">
+                    <div className="absolute bottom-6 right-8 z-20 text-xs sm:text-sm flex items-center gap-2 text-white">
                         <Clock className="w-3 h-3 sm:w-4 sm:h-4" />
                         <span className="tabular-nums tracking-tight">{currentTime}</span>
                     </div>
