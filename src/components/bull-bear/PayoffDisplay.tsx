@@ -11,10 +11,8 @@ const PayoffDisplay: React.FC<PayoffDisplayProps> = ({ amount }) => {
         const returnRate = 0.80 // 80%
 
         // In the money (winning scenario): get back original amount + 80% return
-        const outOfTheMoney = numAmount + (numAmount * returnRate)
-
-        // Out of the money (losing scenario): lose the original amount
-        const inTheMoney = 0
+        const inTheMoney = numAmount + (numAmount * returnRate)
+        const outOfTheMoney = 0
 
         return {
             inTheMoney,
@@ -34,7 +32,7 @@ const PayoffDisplay: React.FC<PayoffDisplayProps> = ({ amount }) => {
                         In the money:
                     </span>
                     <span className="tabular-nums tracking-tighter">
-                        ${amount} (0%)
+                        ${payoff.inTheMoney.toFixed(2)} ({payoff.returnPercentage.toFixed(0)}%)
                     </span>
                 </div>
                 <div className="flex items-center justify-between text-[#B6B6B6]">
@@ -42,7 +40,7 @@ const PayoffDisplay: React.FC<PayoffDisplayProps> = ({ amount }) => {
                         Out of the money:
                     </span>
                     <span className="tabular-nums tracking-tighter">
-                        ${payoff.outOfTheMoney.toFixed(2)} ({payoff.returnPercentage.toFixed(0)}%)
+                        ${payoff.outOfTheMoney.toFixed(2)} (0%)
                     </span>
                 </div>
             </div>

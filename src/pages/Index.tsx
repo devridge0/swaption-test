@@ -38,7 +38,6 @@ const Index = () => {
 
   const handlePercentageChange = (newPercent: number) => {
     setCurrentPercent(newPercent)
-    console.log("percent ====>", newPercent)
   }
 
   const renderActiveComponent = () => {
@@ -146,7 +145,7 @@ const Index = () => {
             </div>
           </div>
         </Card>
-        <div>
+        <div className="mt-4">
           <TradingPositionsTable />
         </div>
       </main>
