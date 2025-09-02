@@ -3,18 +3,19 @@ import Navbar from "@/components/layout/Navbar";
 import { useNavigation } from "@/contexts/NavigationContext";
 import BullBear from "@/components/bull-bear/Index";
 import HighLow from "@/components/high-low/Index";
-import BTCRealtimeChart from "@/components/BTCRealtimeChart";
+import BTCRealtimeChart, { BTCRealtimeChartRef } from "@/components/BTCRealtimeChart";
 import { TradingPositionsTable } from "@/components/TradingTable";
-import { useEffect, useState } from "react"
+import { useEffect, useState, useRef } from "react"
 import { Card } from "@/components/ui/card"
 
 const Index = () => {
   const { activeTab } = useNavigation();
   const [currentTime, setCurrentTime] = useState<string>("--:--:--")
-  const [currentPrice, setCurrentPrice] = useState<number | null>(45000) // Mock price for now
+  const [currentPrice, setCurrentPrice] = useState<number | null>() // Mock price for now
   const [selectedTime, setSelectedTime] = useState<number>(0) // default to 2m
   const [isHighLowSelected, setIsHighLowSelected] = useState<boolean>(false)
   const [currentPercent, setCurrentPercent] = useState<number>(0.02) // Track current percentage
+  const chartRef = useRef<BTCRealtimeChartRef>(null)
 
   // safer interval
   useEffect(() => {
@@ -27,11 +28,6 @@ const Index = () => {
     return () => clearInterval(id)
   }, [])
 
-  // Update isHighLowSelected when activeTab changes
-  useEffect(() => {
-    setIsHighLowSelected(activeTab === 'high-low')
-  }, [activeTab])
-
   const handleTimeChange = (newTime: number) => {
     setSelectedTime(newTime)
   }
@@ -39,6 +35,14 @@ const Index = () => {
   const handlePercentageChange = (newPercent: number) => {
     setCurrentPercent(newPercent)
   }
+
+  useEffect(() => {
+    if(activeTab === 'high-low') {
+      setIsHighLowSelected(true)
+    } else {
+      setIsHighLowSelected(false)
+    }
+  }, [activeTab])
 
   const renderActiveComponent = () => {
     switch (activeTab) {
@@ -131,6 +135,7 @@ const Index = () => {
             {/* Right Panel */}
             <div className="relative flex flex-1 w-full border-t md:border-t-0 md:border-l border-[#A0A0A0] p-4 sm:p-6 min-h-[400px]">
               <BTCRealtimeChart
+                ref={chartRef}
                 percent={currentPercent/100} // Dynamic percentage from BullBear component
                 height={450}
                 onPrice={setCurrentPrice}

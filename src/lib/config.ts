@@ -3,6 +3,10 @@
 export const SIDE_SWAP_WS_URL: string =
   (import.meta as any)?.env?.VITE_SIDE_SWAP_WS_URL ?? "wss://api.sideswap.io/json-rpc-ws";
 
+
+export const SIDE_SWAP_TESTNET_URL: string =
+  (import.meta as any)?.env?.VITE_SIDE_SWAP_TESTNET_URL ?? "https://api-testnet.sideswap.io/payjoin";
+
 // BTC/USDT asset identifiers; override via env if needed
 export const SIDE_SWAP_BASE_ASSET_ID: string =
   (import.meta as any)?.env?.VITE_SIDE_SWAP_BASE_ASSET_ID ??

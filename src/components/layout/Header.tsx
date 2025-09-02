@@ -1,4 +1,7 @@
 import { Button } from "@/components/ui/button"
+import React, { Suspense } from "react"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+const WalletConnect = React.lazy(() => import("@/components/wallet/WalletConnect"))
 
 const Header = () => {
   return (
@@ -15,13 +18,25 @@ const Header = () => {
           </div>
         </div>
 
-        <Button
-          variant="outline"
-          className="border-none text-sm sm:text-base tracking-tight text-white rounded-full bg-[#009286] hover:text-gray-50 hover:bg-[#12d1c1] px-4 py-2 sm:px-6 sm:py-3 h-auto min-w-[120px] sm:min-w-[140px] md:w-[164px] md:h-[42px]"
-        >
-          <span className="hidden sm:inline">Connect Wallet</span>
-          <span className="sm:hidden">Connect</span>
-        </Button>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button
+              variant="outline"
+              className="border-none text-sm sm:text-base tracking-tight text-white rounded-full bg-[#009286] hover:text-gray-50 hover:bg-[#12d1c1] px-4 py-2 sm:px-6 sm:py-3 h-auto min-w-[120px] sm:min-w-[140px] md:w-[164px] md:h-[42px]"
+            >
+              <span className="hidden sm:inline">Connect Wallet</span>
+              <span className="sm:hidden">Connect</span>
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-4xl w-[96vw]">
+            <DialogHeader>
+              <DialogTitle>Wallet Connect</DialogTitle>
+            </DialogHeader>
+            <Suspense fallback={<div className="p-4 text-sm">Loading…</div>}>
+              <WalletConnect />
+            </Suspense>
+          </DialogContent>
+        </Dialog>
       </div>
     </header>
   )
